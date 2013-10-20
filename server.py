@@ -42,8 +42,9 @@ class LightHandler(tornado.web.RequestHandler):
 
 application = tornado.web.Application([
 	(r"/drive/(.+)", DriveHandler, { "m": m }),
-	(r"/light/(.+)/(.+)", LightHandler, { "m": m })
-])
+	(r"/light/(.+)/(.+)", LightHandler, { "m": m }),
+	(r"/(.*)", tornado.web.StaticFileHandler, { "path": "./static", "default_filename": "index.html" })
+], debug=True)
 
 if __name__ == "__main__":
 	application.listen(8888, "0.0.0.0")
