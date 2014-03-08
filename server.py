@@ -1,7 +1,6 @@
 #/usr/bin/env python3
 
 import io
-import time
 import threading
 import random
 import base64
@@ -64,13 +63,16 @@ class ImageCapture:
 		self.running = False
 		self.camera.close()
 	def thread_method(self):
-		while self.running:
-			output = io.BytesIO()
-			self.camera.capture(output, "jpeg")
-			image = base64.b64encode( output.getvalue())
-			output.close()
+		output = io.BytesIO()
+		for i in self.camera.capture_continuous(output, "jpeg", use_video_port=True):
+			if not self.running:
+				break
+			image = base64.b64encode(output.getvalue())
+			output.seek(0)
+			output.truncate()
 			for o in self.connections:
 				o.write_message(image)
+		output.close()
 	def register_connection(self, connection):
 		self.connections.append(connection)
 		self.run()
