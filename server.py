@@ -3,8 +3,11 @@
 import io
 import time
 import threading
+import random
+import base64
 import tornado.ioloop
 import tornado.web
+import tornado.websocket
 import picamera
 import amoebatwo
 
@@ -44,51 +47,62 @@ class LightHandler(tornado.web.RequestHandler):
 			self.m.lights.front.off()
 			self.write("Front, Off")
 
-class ImageHandler(tornado.web.RequestHandler):
-	def initialize(self, capture):
-		self.capture = capture
-	def get(self):
-		self.set_header("Content-Type", "image/jpeg")
-		if self.capture.image is not None:
-			self.write(self.capture.image)
-
 class ImageCapture:
 	def initialize(self, camera):
 		self.running = False
 		self.camera = camera
-		self.camera.resolution = (1024, 768)
-		self.image = None
+		self.camera.resolution = (160, 120)
+		self.connections = []
 	def run(self):
-		self.running = True
-		self.thread = threading.Thread(target=self.thread_method, args=())
-		self.thread.start()
+		if not self.running and len(self.connections) > 0:
+			self.running = True
+			self.thread = threading.Thread(target=self.thread_method, args=())
+			self.thread.start()
 	def stop(self):
 		self.running = False
+	def terminate(self):
+		self.running = False
+		self.camera.close()
 	def thread_method(self):
 		while self.running:
-			print("Starting capture")
 			output = io.BytesIO()
 			self.camera.capture(output, "jpeg")
-			self.image = output.getvalue()
+			image = base64.b64encode( output.getvalue())
 			output.close()
-			print("Finished capture")
-			time.sleep(0.1)
-		self.camera.close()
+			for o in self.connections:
+				o.write_message(image)
+	def register_connection(self, connection):
+		self.connections.append(connection)
+		self.run()
+	def deregister_connection(self, connection):
+		for i, o in enumerate(self.connections):
+			if o.id == connection.id:
+				del self.connections[i]
+		if len(self.connections) < 1:
+			self.stop()
 
 camera = picamera.PiCamera()
 
 capture = ImageCapture()
 capture.initialize(camera)
-capture.run()
+
+class ImageConnectionHandler(tornado.websocket.WebSocketHandler):
+	def open(self):
+		global capture
+		self.capture = capture
+		self.id = random.randint(1, 99999999999)
+		self.capture.register_connection(self)
+	def on_close(self):
+		self.capture.deregister_connection(self)
 
 application = tornado.web.Application([
 	(r"/drive/(.+)", DriveHandler, { "m": m }),
 	(r"/light/(.+)/(.+)", LightHandler, { "m": m }),
-	(r"/image", ImageHandler, { "capture": capture }),
+	(r"/image", ImageConnectionHandler),
 	(r"/(.*)", tornado.web.StaticFileHandler, { "path": "./static", "default_filename": "index.html" })
 ], debug=True)
 
 if __name__ == "__main__":
 	application.listen(8888, "0.0.0.0")
 	tornado.ioloop.IOLoop.instance().start()
-	capture.stop()
+	capture.terminate()
