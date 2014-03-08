@@ -4,61 +4,28 @@ import io
 import threading
 import random
 import base64
+import json
+import time
 import tornado.ioloop
 import tornado.web
 import tornado.websocket
 import picamera
 import amoebatwo
 
-m = amoebatwo.AmoebaTwo()
-
-class DriveHandler(tornado.web.RequestHandler):
-	def initialize(self, m):
-		self.m = m
-	def get(self, direction):
-		if direction == "forwards":
-			self.m.move.forwards()
-			self.write("Forwards")
-		elif direction == "right":
-			self.m.move.right()
-			self.write("Right")
-		elif direction == "left":
-			self.m.move.left()
-			self.write("Left")
-		else:
-			self.m.move.stop()
-			self.write("Stop")
-
-class LightHandler(tornado.web.RequestHandler):
-	def initialize(self, m):
-		self.m = m
-	def get(self, light, state):
-		if light == "top" and state == "on":
-			self.m.lights.top.on()
-			self.write("Top, On")
-		elif light == "top" and state == "off":
-			self.m.lights.top.off()
-			self.write("Top, Off")
-		elif light == "front" and state == "on":
-			self.m.lights.front.on()
-			self.write("Front, On")
-		elif light == "front" and state == "off":
-			self.m.lights.front.off()
-			self.write("Front, Off")
-
 class ImageCapture:
-	def initialize(self, camera):
+	def initialize(self, camera, callback):
 		self.running = False
 		self.camera = camera
 		self.camera.resolution = (160, 120)
-		self.connections = []
+		self.callback = callback
 	def run(self):
-		if not self.running and len(self.connections) > 0:
+		if not self.running:
 			self.running = True
 			self.thread = threading.Thread(target=self.thread_method, args=())
 			self.thread.start()
 	def stop(self):
-		self.running = False
+		if self.running:
+			self.running = False
 	def terminate(self):
 		self.running = False
 		self.camera.close()
@@ -67,40 +34,134 @@ class ImageCapture:
 		for i in self.camera.capture_continuous(output, "jpeg", use_video_port=True):
 			if not self.running:
 				break
-			image = base64.b64encode(output.getvalue())
+			image = str(base64.b64encode(output.getvalue()))
 			output.seek(0)
 			output.truncate()
-			for o in self.connections:
-				o.write_message(image)
+			self.callback(image)
+			time.sleep(0.1)
 		output.close()
-	def register_connection(self, connection):
-		self.connections.append(connection)
-		self.run()
-	def deregister_connection(self, connection):
-		for i, o in enumerate(self.connections):
-			if o.id == connection.id:
+
+class ClientManager:
+	def __init__(self, image_capture):
+		self.connections = []
+		self.panic = False
+		self.image_capture = image_capture
+	def register_client(self, connections):
+		self.connections.append(connections)
+		self.send_message("COMMAND_USERS", len(self.connections))
+	def deregister_client(self, connection):
+		for i, c in enumerate(self.connections):
+			if c.id == connection.id:
+				self.connections[i].close()
 				del self.connections[i]
-		if len(self.connections) < 1:
-			self.stop()
+		self.send_message("COMMAND_USERS", len(self.connections))
+	def send_message(self, command, data = None):
+		for c in self.connections:
+			c.send_message(command, data)
+	def takeover(self, connection, is_admin):
+		any_has_control = False
+		for c in self.connections:
+			if c.has_control and c.id != connection.id:
+				any_has_control = True
+		if is_admin or not any_has_control:
+			for c in self.connections:
+				if c.id == connection.id:
+					c.has_control = True
+					c.send_message("COMMAND_TAKENOVER")
+				else:
+					c.has_control = False
+					c.send_message("COMMAND_YIELDED")
+	def update_camera(self):
+		has_cameras = False
+		for c in self.connections:
+			if c.camera_enabled:
+				has_cameras = True
+		if has_cameras:
+			self.image_capture.run()
+		else:
+			self.image_capture.stop()
+	def distribute_image(self, image):
+		for c in self.connections:
+			if c.camera_enabled:
+				c.send_message("CAMERA_IMAGE", { "image": image })
 
-camera = picamera.PiCamera()
-
+m = amoebatwo.AmoebaTwo()
 capture = ImageCapture()
-capture.initialize(camera)
+manager = ClientManager(capture)
+camera = picamera.PiCamera()
+capture.initialize(camera, manager.distribute_image)
 
-class ImageConnectionHandler(tornado.websocket.WebSocketHandler):
+class SocketHandler(tornado.websocket.WebSocketHandler):
 	def open(self):
-		global capture
-		self.capture = capture
-		self.id = random.randint(1, 99999999999)
-		self.capture.register_connection(self)
+		global m
+		global manager
+		self.m = m
+		self.manager = manager
+		self.id = random.randint(1, 999999999999)
+		self.camera_enabled = False
+		self.has_control = False
+		self.manager.register_client(self)
+		self.admin_keyword = "cja"
 	def on_close(self):
-		self.capture.deregister_connection(self)
+		self.manager.deregister_client(self)
+	def on_message(self, message):
+		data = json.loads(message)
+		if "command" not in data:
+			return
+		cmd = data["command"]
+		is_admin = "data" in data and "admin" in data["data"] and data["data"]["admin"] == self.admin_keyword
+		if self.has_control and not self.manager.panic:
+			if cmd == "DRIVE_FORWARD":
+				self.m.move.forwards()
+				self.manager.send_message(cmd)
+			elif cmd == "DRIVE_RIGHT":
+				self.m.move.right()
+				self.anager.send_message(cmd)
+			elif cmd == "DRIVE_LEFT":
+				self.m.move.left()
+				self.manager.send_message(cmd)
+			elif cmd == "DRIVE_STOP":
+				self.m.move.stop()
+				self.manager.send_message(cmd)
+			elif cmd == "COMMAND_YIELD":
+				self.m.move.stop()
+				self.has_control = False
+				self.manager.send_message("COMMAND_YIELDED")
+		if cmd == "COMMAND_TAKEOVER":
+			self.manager.takeover(self, is_admin)
+		if cmd == "LIGHT_FRONT_ON":
+			self.m.lights.front.on()
+			self.manager.send_message(cmd)
+		elif cmd == "LIGHT_FRONT_OFF":
+			self.m.lights.front.off()
+			self.manager.send_message(cmd)
+		elif cmd == "LIGHT_TOP_ON":
+			self.m.lights.top.on()
+			self.manager.send_message(cmd)
+		elif cmd == "LIGHT_TOP_OFF":
+			self.m.lights.top.off()
+			self.manager.send_message(cmd)
+		elif cmd == "PANIC":
+			self.m.move.stop()
+			self.manager.panic = True
+			self.manager.send_message(cmd)
+		elif cmd == "UNPANIC" and is_admin:
+			self.m.move.stop()
+			self.manager.panic = False
+			self.manager.send_message(cmd)
+		elif cmd == "CAMERA_ON":
+			self.camera_enabled = True
+			self.manager.update_camera()
+			self.send_message(cmd)
+		elif cmd == "CAMERA_OFF":
+			self.camera_enabled = False
+			self.manager.update_camera()
+			self.send_message(cmd)
+	def send_message(self, command, data = None):
+		self.write_message(json.dumps({ "command": command, "data": data }))
 
 application = tornado.web.Application([
-	(r"/drive/(.+)", DriveHandler, { "m": m }),
-	(r"/light/(.+)/(.+)", LightHandler, { "m": m }),
-	(r"/image", ImageConnectionHandler),
+	(r"/socket", SocketHandler),
 	(r"/(.*)", tornado.web.StaticFileHandler, { "path": "./static", "default_filename": "index.html" })
 ], debug=True)
 
