@@ -14,6 +14,9 @@
 <body>
 	<div class="box" ng-controller="Amoeba">
 		<h1>AmoebaTwo</h1>
+		<div class="well" ng-show="image">
+			<img ng-src="{{image}}" />
+		</div>
 		<div class="well">
 			<button class="btn btn-success btn-lg" smart-button touch-start="forwards()" touch-end="stop()" click-start="forwards()" click-end="stop()"><i class="icon-chevron-up"></i></button>
 			<div class="btn-row">

@@ -16,4 +16,15 @@ amoeba.controller("Amoeba", ["$scope", "robot",
 		}
 	}
 
+	$scope.image = false;
+
+	$scope.init = function() {
+		$scope.socket = new WebSocket("ws://" + window.location.host + "/image");
+		$scope.socket.onmessage = function(msg) {
+			$scope.image = "data:image/jpeg;base64," + msg.data;
+			$scope.$apply();
+		}
+	}
+	$scope.init();
+
 }]);
