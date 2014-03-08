@@ -1,0 +1,13 @@
+body {
+	width: 100%;
+	text-align: center;
+}
+
+.box {
+	width: 300px;
+	margin: 0 auto;
+}
+
+.box .btn-row .btn:first-child {
+	margin-right: 100px;
+}
