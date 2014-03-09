@@ -12,6 +12,9 @@ amoeba.controller("Amoeba", ["$scope", "$timeout",
 	
 	// Whether we are attempting to reconnect
 	$scope.reconnecting = false;
+	
+	// Whether to show admin box
+	$scope.showAdmin = false;
 
 	// Initialises the server websocket connection
 	$scope.connect = function(name) {
