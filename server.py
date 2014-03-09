@@ -34,11 +34,11 @@ class ImageCapture:
 		for i in self.camera.capture_continuous(output, "jpeg", use_video_port=True):
 			if not self.running:
 				break
-			image = str(base64.b64encode(output.getvalue()))
+			image = base64.b64encode(output.getvalue()).decode("utf-8")
 			output.seek(0)
 			output.truncate()
 			self.callback(image)
-			time.sleep(0.1)
+			time.sleep(0.05)
 		output.close()
 
 class ClientManager:
@@ -48,21 +48,25 @@ class ClientManager:
 		self.image_capture = image_capture
 	def register_client(self, connections):
 		self.connections.append(connections)
-		self.send_message("COMMAND_USERS", len(self.connections))
+		self.send_message("COMMAND_USERS", { "count": len(self.connections) })
 	def deregister_client(self, connection):
 		for i, c in enumerate(self.connections):
 			if c.id == connection.id:
-				self.connections[i].close()
 				del self.connections[i]
-		self.send_message("COMMAND_USERS", len(self.connections))
+		if connection.has_control:
+			self.send_message("COMMAND_YIELDED", { "available": True })
+		self.send_message("COMMAND_USERS", { "count": len(self.connections) })
 	def send_message(self, command, data = None):
 		for c in self.connections:
 			c.send_message(command, data)
-	def takeover(self, connection, is_admin):
+	def control_taken(self):
 		any_has_control = False
 		for c in self.connections:
 			if c.has_control and c.id != connection.id:
 				any_has_control = True
+		return any_has_control
+	def takeover(self, connection, is_admin):
+		any_has_control = self.control_taken()
 		if is_admin or not any_has_control:
 			for c in self.connections:
 				if c.id == connection.id:
@@ -70,7 +74,7 @@ class ClientManager:
 					c.send_message("COMMAND_TAKENOVER")
 				else:
 					c.has_control = False
-					c.send_message("COMMAND_YIELDED")
+					c.send_message("COMMAND_YIELDED", { "available": False })
 	def update_camera(self):
 		has_cameras = False
 		for c in self.connections:
@@ -102,6 +106,7 @@ class SocketHandler(tornado.websocket.WebSocketHandler):
 		self.has_control = False
 		self.manager.register_client(self)
 		self.admin_keyword = "cja"
+		self.send_message("CONTROL_AVAILABLE", { "available": not self.manager.control_taken() })
 	def on_close(self):
 		self.manager.deregister_client(self)
 	def on_message(self, message):
@@ -116,7 +121,7 @@ class SocketHandler(tornado.websocket.WebSocketHandler):
 				self.manager.send_message(cmd)
 			elif cmd == "DRIVE_RIGHT":
 				self.m.move.right()
-				self.anager.send_message(cmd)
+				self.manager.send_message(cmd)
 			elif cmd == "DRIVE_LEFT":
 				self.m.move.left()
 				self.manager.send_message(cmd)
@@ -126,7 +131,7 @@ class SocketHandler(tornado.websocket.WebSocketHandler):
 			elif cmd == "COMMAND_YIELD":
 				self.m.move.stop()
 				self.has_control = False
-				self.manager.send_message("COMMAND_YIELDED")
+				self.manager.send_message("COMMAND_YIELDED", { "available": True })
 		if cmd == "COMMAND_TAKEOVER":
 			self.manager.takeover(self, is_admin)
 		if cmd == "LIGHT_FRONT_ON":

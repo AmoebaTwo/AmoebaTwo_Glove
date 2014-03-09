@@ -13,19 +13,37 @@
 </head>
 <body>
 	<div class="box" ng-controller="Amoeba">
-		<h1>AmoebaTwo</h1>
-		<div class="well" ng-show="image">
-			<img ng-src="{{image}}" />
+		<div ng-hide="connected" class="well">
+			<h1>Just a sec...</h1>
+			<p>Connecting to AmoebaTwo</p>
+			<i class="icon-spin icon-spinner" style="font-size: 30px"></i>
 		</div>
-		<div class="well">
-			<button class="btn btn-success btn-lg" smart-button touch-start="forwards()" touch-end="stop()" click-start="forwards()" click-end="stop()"><i class="icon-chevron-up"></i></button>
+		<div class="well" ng-show="connected" style="display: none">
+			<button class="btn btn-default" ng-click="toggleCamera()">{{camera && "Disable Camera" || "Enable Camera"}}</button>		
+			<img ng-src="{{image}}" ng-show="image" style="margin-top: 10px" />
+		</div>
+		<div class="well" style="display: none" ng-show="connected">
+			<p ng-show="userCount">{{userCount}} people connected</p>
+			<button class="btn btn-default" ng-show="controlAvailable" ng-click="takeover()">Take control</button>
+			<button class="btn btn-default" ng-show="control" ng-click="yield()">Yield control</button>
+			<p ng-show="!control && !controlAvailable && connected">Someone else has control.</p>
+			<p ng-show="!connected">Not connected to robot.</p>
+		</div>
+		<div class="well" style="display: none" ng-show="connected">
+			<button class="btn btn-lg" drive="drive" control="control" ng-class="{ 'btn-success': control || drive == 'forward' }" ng-disabled="!control" smart-button touch-start="forwards()" touch-end="stop()" click-start="forwards()" click-end="stop()">
+				<i class="icon-chevron-up"></i>
+			</button>
 			<div class="btn-row">
-				<button class="btn btn-success btn-lg" smart-button touch-start="left()" touch-end="stop()" click-start="left()" click-end="stop()"><i class="icon-chevron-left"></i></button>
-				<button class="btn btn-success btn-lg" smart-button touch-start="right()" touch-end="stop()" click-start="right()" click-end="stop()"><i class="icon-chevron-right"></i></button>
+				<button class="btn btn-lg" drive="drive" control="control" ng-class="{ 'btn-success': control || drive == 'left' }" ng-disabled="!control" smart-button touch-start="left()" touch-end="stop()" click-start="left()" click-end="stop()">
+					<i class="icon-chevron-left"></i>
+				</button>
+				<button class="btn btn-lg" drive="drive" control="control" ng-class="{ 'btn-success': control || drive == 'right' }" ng-disabled="!control" smart-button touch-start="right()" touch-end="stop()" click-start="right()" click-end="stop()">
+					<i class="icon-chevron-right"></i>
+				</button>
 			</div>
-			<button class="btn btn-danger btn-lg" smart-button touch-start="stop()" touch-end="stop()" click-start="stop()" click-end="stop()"><i class="icon-remove"></i></button>
+			<button class="btn btn-danger btn-lg" smart-button touch-start="panic()" click-start="panic()"><i class="icon-exclamation-sign"></i> Panic</button>
 		</div>
-		<div class="well">
+		<div class="well" ng-show="connected" style="display: none">
 			<p>Front light</p>
 			<div class="btn-group">
 				<button class="btn btn-info btn-lg" smart-button touch-start="light.front.on()" click-start="light.front.on()"><i class="icon-eye-open"></i></button>
@@ -42,7 +60,6 @@
 	<script src="js/jquery.min.js"></script>
 	<script src="js/angular.min.js"></script>
 	<script src="js/app.js"></script>
-	<script src="js/service.js"></script>
 	<script src="js/controller.js"></script>
 	<script src="js/button.js"></script>
 
