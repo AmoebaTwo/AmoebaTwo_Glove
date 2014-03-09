@@ -13,46 +13,72 @@
 </head>
 <body>
 	<div class="box" ng-controller="Amoeba">
-		<div ng-hide="connected" class="well">
+		<div class="well" ng-show="!socket && !reconnecting">
+			<p>Please enter your name:</p>
+			<form ng-submit="connect(name)">
+				<input type="text" ng-model="name">
+				<p><button class="btn btn-success">Connect to robot</button></p>
+			</form>
+		</div>
+		<div class="well" ng-show="(socket && !state) || reconnecting" style="display: none">
 			<h1>Just a sec...</h1>
 			<p>Connecting to AmoebaTwo</p>
 			<i class="icon-spin icon-spinner" style="font-size: 30px"></i>
 		</div>
-		<div class="well" ng-show="connected" style="display: none">
-			<button class="btn btn-default" ng-click="toggleCamera()">{{camera && "Disable Camera" || "Enable Camera"}}</button>		
-			<img ng-src="{{image}}" ng-show="image" style="margin-top: 10px" />
-		</div>
-		<div class="well" style="display: none" ng-show="connected">
-			<p ng-show="userCount">{{userCount}} people connected</p>
-			<button class="btn btn-default" ng-show="controlAvailable" ng-click="takeover()">Take control</button>
-			<button class="btn btn-default" ng-show="control" ng-click="yield()">Yield control</button>
-			<p ng-show="!control && !controlAvailable && connected">Someone else has control.</p>
-			<p ng-show="!connected">Not connected to robot.</p>
-		</div>
-		<div class="well" style="display: none" ng-show="connected">
-			<button class="btn btn-lg" drive="drive" control="control" ng-class="{ 'btn-success': control || drive == 'forward' }" ng-disabled="!control" smart-button touch-start="forwards()" touch-end="stop()" click-start="forwards()" click-end="stop()">
-				<i class="icon-chevron-up"></i>
-			</button>
-			<div class="btn-row">
-				<button class="btn btn-lg" drive="drive" control="control" ng-class="{ 'btn-success': control || drive == 'left' }" ng-disabled="!control" smart-button touch-start="left()" touch-end="stop()" click-start="left()" click-end="stop()">
-					<i class="icon-chevron-left"></i>
-				</button>
-				<button class="btn btn-lg" drive="drive" control="control" ng-class="{ 'btn-success': control || drive == 'right' }" ng-disabled="!control" smart-button touch-start="right()" touch-end="stop()" click-start="right()" click-end="stop()">
-					<i class="icon-chevron-right"></i>
-				</button>
+		<div ng-show="state" style="display: none">
+			<div class="well" ng-show="state.robot.panic">
+				<i class="icon-exclamation-sign" style="color: red; font-size: 75px"></i>
+				<p>Someone has paniced!</p>
 			</div>
-			<button class="btn btn-danger btn-lg" smart-button touch-start="panic()" click-start="panic()"><i class="icon-exclamation-sign"></i> Panic</button>
-		</div>
-		<div class="well" ng-show="connected" style="display: none">
-			<p>Front light</p>
-			<div class="btn-group">
-				<button class="btn btn-info btn-lg" smart-button touch-start="light.front.on()" click-start="light.front.on()"><i class="icon-eye-open"></i></button>
-				<button class="btn btn-default btn-lg" smart-button touch-start="light.front.off()" click-start="light.front.off()"><i class="icon-eye-close"></i></button>
+			<div class="well">
+				<p>Camera: <button class="btn btn-default" ng-click="toggleCamera()">{{state.client.camera_on && "Disable" || "Enable"}}</button></p>
+				<img ng-src="{{image}}" ng-show="state.client.camera_on" style="margin-top: 10px" />
 			</div>
-			<p>Top light</p>
-			<div class="btn-group">
-				<button class="btn btn-info btn-lg" smart-button touch-start="light.top.on()" click-start="light.top.on()"><i class="icon-eye-open"></i></button>
-				<button class="btn btn-default btn-lg" smart-button touch-start="light.top.off()" click-start="light.top.off()"><i class="icon-eye-close"></i></button>
+			<div class="well">
+				<p>{{state.robot.user_count}} {{state.robot.user_count > 1 && 'people' || 'person' }} connected</p>
+				<button class="btn btn-default" ng-show="state.robot.control_available && !state.robot.panic" ng-click="takeover()">Take control</button>
+				<button class="btn btn-default" ng-show="state.client.has_control && !state.robot.panic" ng-click="yield()">Yield control</button>
+				<p ng-show="!state.robot.control_available && !state.client.has_control && !state.robot.panic">Someone else has control.</p>
+				<p ng-show="state.robot.panic">Control is not available during panic.</p>
+			</div>
+			<div class="well">
+				<button class="btn btn-lg" state="state" ng-class="{ 'btn-success': state.client.has_control || state.robot.drive == 'FORWARD' }" ng-disabled="!state.client.has_control" smart-button touch-start="forward()" touch-end="stop()" click-start="forward()" click-end="stop()">
+					<i class="icon-chevron-up"></i>
+				</button>
+				<div class="btn-row">
+					<button class="btn btn-lg" state="state" ng-class="{ 'btn-success': state.client.has_control || state.robot.drive == 'LEFT' }" ng-disabled="!state.client.has_control" smart-button touch-start="left()" touch-end="stop()" click-start="left()" click-end="stop()">
+						<i class="icon-chevron-left"></i>
+					</button>
+					<button class="btn btn-lg" state="state" ng-class="{ 'btn-success': state.client.has_control || state.robot.drive == 'RIGHT' }" ng-disabled="!state.client.has_control" smart-button touch-start="right()" touch-end="stop()" click-start="right()" click-end="stop()">
+						<i class="icon-chevron-right"></i>
+					</button>
+				</div>
+				<button class="btn btn-danger btn-lg" smart-button touch-start="panic()" click-start="panic()"><i class="icon-exclamation-sign"></i> Panic</button>
+			</div>
+			<div class="well">
+				<p>Lights</p>
+				<div class="btn-group">
+					<button class="btn btn-info btn-lg" state="state" ng-hide="state.robot.front_light" smart-button touch-start="frontLightOn()" click-start="frontLightOn()"><i class="icon-eye-open"></i> Front</button>
+					<button class="btn btn-default btn-lg" state="state" ng-show="state.robot.front_light" smart-button touch-start="frontLightOff()" click-start="frontLightOff()"><i class="icon-eye-close"></i> Front</button>
+					<button class="btn btn-info btn-lg" state="state" ng-hide="state.robot.top_light" smart-button touch-start="topLightOn()" click-start="topLightOn()"><i class="icon-eye-open"></i> Top</button>
+					<button class="btn btn-default btn-lg" state="state" ng-show="state.robot.top_light" smart-button touch-start="topLightOff()" click-start="topLightOff()"><i class="icon-eye-close"></i> Top</button>
+				</div>
+			</div>
+			<div class="well">
+				<div ng-show="!state.client.is_admin">
+					<p>Please enter admin password:</p>
+					<form ng-submit="elevate(password)">
+						<input type="password" ng-model="password">
+						<p><button class="btn btn-success">Elevate</button></p>
+					</form>
+				</div>
+				<div ng-show="state.client.is_admin">
+					<p>You are admin-enabled.</p>
+					<div class="btn-group">
+						<button class="btn btn-danger" state="state" ng-show="state.robot.panic" smart-button touch-start="unpanic()" click-start="unpanic()"><i class="icon-exclamation-sign"></i> Unpanic</button>
+						<button class="btn btn-default" ng-show="!state.client.has_control" ng-click="takeover()">Take control</button>
+					</div>
+				</div>
 			</div>
 		</div>
 	</div>

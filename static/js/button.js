@@ -14,8 +14,7 @@ amoeba.directive("smartButton", [function() {
 			"touchEnd": "&",
 			"clickStart": "&",
 			"clickEnd": "&",
-			"control": "=",
-			"drive": "="
+			"state": "="
 		},
 		"link": function($scope, element) {
 			element.on("touchstart", t($scope.touchStart)).on("touchend", t($scope.touchEnd))
